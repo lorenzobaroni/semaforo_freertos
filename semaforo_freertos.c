@@ -9,7 +9,6 @@
 #include "task.h"
 
 #define LED_VERDE 11
-#define LED_AZUL 12
 #define LED_VERMELHO 13
 #define BOTAO_A 5
 #define I2C_PORT i2c1
@@ -20,6 +19,9 @@
 
 volatile bool modoNoturno = false;
 ssd1306_t ssd;
+
+enum EstadoSemaforo { VERDE, AMARELO, VERMELHO, NOTURNO };
+volatile enum EstadoSemaforo estadoAtual = VERDE;
 
 void buzzer_beep(int on_ms, int off_ms, int repeat) {
     for (int i = 0; i < repeat; i++) {
@@ -51,11 +53,10 @@ void buzzer_noturno() {
 
 void desenharLayoutBase() {
     ssd1306_fill(&ssd, false);
-        ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);      // Desenha um retângulo
-        ssd1306_line(&ssd, 3, 25, 123, 25, true);           // Desenha uma linha
-        ssd1306_draw_string(&ssd, "Semaforo", 8, 6); // Desenha uma string
-        ssd1306_draw_string(&ssd, "Inteligente", 20, 16);  // Desenha uma string
-        ssd1306_send_data(&ssd);                           // Atualiza o ssd
+    ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);      // Desenha um retângulo
+    ssd1306_line(&ssd, 3, 25, 123, 25, true);           // Desenha uma linha
+    ssd1306_draw_string(&ssd, "Semaforo", 8, 6); // Desenha uma string
+    ssd1306_draw_string(&ssd, "Inteligente", 20, 16);  // Desenha uma string
 }
 
 void vBotaoTask(void *pvParameters) {
@@ -86,51 +87,38 @@ void vBotaoTask(void *pvParameters) {
 
 void vSemaforoTask(void *pvParameters) {
     gpio_init(LED_VERDE);
-    gpio_init(LED_AZUL);
     gpio_init(LED_VERMELHO);
-    gpio_set_dir(LED_VERDE, GPIO_OUT);
-    gpio_set_dir(LED_AZUL, GPIO_OUT);
-    gpio_set_dir(LED_VERMELHO, GPIO_OUT);
     gpio_init(BUZZER);
+    gpio_set_dir(LED_VERDE, GPIO_OUT);
+    gpio_set_dir(LED_VERMELHO, GPIO_OUT);
     gpio_set_dir(BUZZER, GPIO_OUT);
 
-    while (true) {
+    while (1) {
         if (!modoNoturno) {
+            estadoAtual = VERDE;
             gpio_put(LED_VERDE, true);
             buzzer_verde();
-            desenharLayoutBase();
-            ssd1306_draw_string(&ssd, "Pode", 10, 30);
-            ssd1306_draw_string(&ssd, "Atravessar", 10, 45);
-            ssd1306_send_data(&ssd);
             vTaskDelay(pdMS_TO_TICKS(3000));
             gpio_put(LED_VERDE, false);
 
-            gpio_put(LED_VERMELHO, true);
+            estadoAtual = AMARELO;
             gpio_put(LED_VERDE, true);
+            gpio_put(LED_VERMELHO, true);
             buzzer_amarelo();
-            desenharLayoutBase();
-            ssd1306_draw_string(&ssd, "Atencao", 10, 35);
-            ssd1306_send_data(&ssd);
             vTaskDelay(pdMS_TO_TICKS(2000));
-            gpio_put(LED_VERMELHO, false);
             gpio_put(LED_VERDE, false);
+            gpio_put(LED_VERMELHO, false);
 
+            estadoAtual = VERMELHO;
             gpio_put(LED_VERMELHO, true);
             buzzer_vermelho();
-            desenharLayoutBase();
-            ssd1306_draw_string(&ssd, "PARE", 10, 35);
-
-            ssd1306_send_data(&ssd);
             vTaskDelay(pdMS_TO_TICKS(3000));
             gpio_put(LED_VERMELHO, false);
         } else {
-            gpio_put(LED_VERMELHO, true);
+            estadoAtual = NOTURNO;
             gpio_put(LED_VERDE, true);
+            gpio_put(LED_VERMELHO, true);
             buzzer_noturno();
-            desenharLayoutBase();
-            ssd1306_draw_string(&ssd, "Modo", 10, 30);
-            ssd1306_draw_string(&ssd, "Noturno", 10, 45);
-            ssd1306_send_data(&ssd);
             vTaskDelay(pdMS_TO_TICKS(500));
             gpio_put(LED_VERDE, false);
             gpio_put(LED_VERMELHO, false);
@@ -139,27 +127,46 @@ void vSemaforoTask(void *pvParameters) {
     }
 }
 
-int main() {
-    stdio_init_all();
-
-    // Inicializa o I2C e o display OLED
+void vDisplayTask(void *pvParameters) {
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
-
     ssd1306_init(&ssd, 128, 64, false, I2C_ADDR, I2C_PORT);
     ssd1306_config(&ssd);
-    ssd1306_fill(&ssd, false);
-    ssd1306_draw_string(&ssd, "Iniciando...", 20, 30);
-    ssd1306_send_data(&ssd);
+
+    while (1) {
+        desenharLayoutBase();
+        switch (estadoAtual) {
+            case VERDE:
+                ssd1306_draw_string(&ssd, "Pode", 10, 30);
+                ssd1306_draw_string(&ssd, "Atravessar", 10, 45);
+                break;
+            case AMARELO:
+                ssd1306_draw_string(&ssd, "Atencao", 10, 35);
+                break;
+            case VERMELHO:
+                ssd1306_draw_string(&ssd, "PARE", 10, 35);
+                break;
+            case NOTURNO:
+                ssd1306_draw_string(&ssd, "Modo", 10, 30);
+                ssd1306_draw_string(&ssd, "Noturno", 10, 45);
+                break;
+        }
+        ssd1306_send_data(&ssd);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+int main() {
+    stdio_init_all();
 
     // Cria as tarefas
     xTaskCreate(vBotaoTask, "Botao", 256, NULL, 1, NULL);
     xTaskCreate(vSemaforoTask, "Semaforo", 512, NULL, 1, NULL);
+    xTaskCreate(vDisplayTask, "ssd", 512, NULL, 1, NULL);
 
     vTaskStartScheduler();
     while (1);
 }
-
