@@ -1,3 +1,4 @@
+
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
@@ -9,6 +10,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+// Definições dos pinos utilizados
 #define LED_VERDE 11
 #define LED_VERMELHO 13
 #define BOTAO_A 5
@@ -18,11 +20,12 @@
 #define I2C_ADDR 0x3C
 #define BUZZER 21
 
+// Objeto do display e variáveis globais de controle de estado
 ssd1306_t ssd;
 volatile bool modoNoturno = false;
 volatile EstadoSemaforo estadoAtual = VERDE;
 
-
+// Função para gerar beeps com o buzzer, com duração e repetição configuráveis
 void buzzer_beep(int on_ms, int off_ms, int repeat) {
     for (int i = 0; i < repeat; i++) {
         gpio_put(BUZZER, true);
@@ -32,7 +35,8 @@ void buzzer_beep(int on_ms, int off_ms, int repeat) {
     }
 }
 
-void buzzer_verde() { buzzer_beep(100, 900, 1); }
+// Padrões de beep para cada estado
+void buzzer_verde()   { buzzer_beep(100, 900, 1); }
 void buzzer_amarelo() { buzzer_beep(100, 100, 5); }
 void buzzer_vermelho() {
     gpio_put(BUZZER, true);
@@ -42,14 +46,16 @@ void buzzer_vermelho() {
 }
 void buzzer_noturno() { buzzer_beep(100, 1900, 1); }
 
+// Layout base do display OLED
 void desenharLayoutBase() {
     ssd1306_fill(&ssd, false);
-    ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);      // Desenha um retângulo
-    ssd1306_line(&ssd, 3, 25, 123, 25, true);           // Desenha uma linha
-    ssd1306_draw_string(&ssd, "Semaforo", 8, 6); // Desenha uma string
-    ssd1306_draw_string(&ssd, "Inteligente", 20, 16);  // Desenha uma string
+    ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);
+    ssd1306_line(&ssd, 3, 25, 123, 25, true);
+    ssd1306_draw_string(&ssd, "Semaforo", 8, 6);
+    ssd1306_draw_string(&ssd, "Inteligente", 20, 16);
 }
 
+// Tarefa responsável por ler o botão A e alternar entre modos (normal <-> noturno)
 void vBotaoTask(void *pvParameters) {
     const uint32_t DEBOUNCE_TIME_MS = 50;
     bool estado_anterior = true;
@@ -76,6 +82,7 @@ void vBotaoTask(void *pvParameters) {
     }
 }
 
+// Tarefa principal do semáforo: controla LEDs e buzzer conforme o estado
 void vSemaforoTask(void *pvParameters) {
     gpio_init(LED_VERDE);
     gpio_init(LED_VERMELHO);
@@ -118,14 +125,14 @@ void vSemaforoTask(void *pvParameters) {
     }
 }
 
+// Tarefa da matriz WS2812: exibe cor conforme estado ou pisca no modo noturno
 void vMatrizTask(void *pvParameters) {
     bool ligado = true;
     while (1) {
         if (estadoAtual == NOTURNO) {
-            // Pisca no modo noturno: alterna entre amarelo e apagado
             uint32_t cor_amarelo = aplicar_brilho(0xCCFF00, 0.2f);
-
             int leds_ativos[] = {6, 7, 8, 11, 12, 13, 16, 17, 18};
+
             for (int i = 0; i < NUM_LEDS; i++) {
                 bool acender = false;
                 for (int j = 0; j < sizeof(leds_ativos) / sizeof(int); j++) {
@@ -137,16 +144,16 @@ void vMatrizTask(void *pvParameters) {
                 ws2812_put_pixel(acender ? (ligado ? cor_amarelo : 0x000000) : 0x000000);
             }
 
-            ligado = !ligado; // alterna o estado para o próximo loop
-            vTaskDelay(pdMS_TO_TICKS(500)); // tempo do piscar
+            ligado = !ligado;
+            vTaskDelay(pdMS_TO_TICKS(500));
         } else {
-            // Comportamento normal
             mostrar_faixas_rgb(estadoAtual);
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
 }
 
+// Tarefa do display OLED: atualiza as mensagens visuais com base no estado atual
 void vDisplayTask(void *pvParameters) {
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
@@ -179,11 +186,11 @@ void vDisplayTask(void *pvParameters) {
     }
 }
 
+// Função principal que inicializa tudo e inicia o escalonador de tarefas FreeRTOS
 int main() {
     stdio_init_all();
     init_matrix();
 
-    // Cria as tarefas
     xTaskCreate(vBotaoTask, "Botao", 256, NULL, 1, NULL);
     xTaskCreate(vSemaforoTask, "Semaforo", 512, NULL, 1, NULL);
     xTaskCreate(vDisplayTask, "ssd", 512, NULL, 1, NULL);
