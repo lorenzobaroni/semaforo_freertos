@@ -17,6 +17,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 add_executable(${PROJECT_NAME}  
         semaforo_freertos.c 
         lib/ssd1306.c # Biblioteca para o display OLED
+        lib/matriz.c # Funções para a matriz de LEDs
         )
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/lib)
@@ -28,7 +29,6 @@ target_link_libraries(${PROJECT_NAME}
         pico_stdlib 
         hardware_gpio
         hardware_i2c
-        hardware_pwm
         FreeRTOS-Kernel 
         FreeRTOS-Kernel-Heap4
         hardware_pio
