@@ -7,7 +7,7 @@ Este projeto implementa um sistema de semáforo inteligente com foco em acessibi
 
 ## 🎥 Demonstração
 O vídeo com a execução da simulação pode ser acessado em:
-[🔗 Link para o vídeo]()
+[🔗 Link para o vídeo](https://www.youtube.com/watch?v=o_k5WdKyw7Y&ab_channel=LorenzoBaroni)
 
 ---
 
